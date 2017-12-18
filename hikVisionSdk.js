@@ -3,7 +3,7 @@ var EventEmitter = require('events').EventEmitter;
 var devicesSource = require('./devicesSourceFromDB.js');
 var thenjs = require('thenjs');
 var config = require('./config_hikSignal.js');
-//var hklsdkenv = require('./HikLight');//海康SDKnode封装
+var hklsdkenv = require('./HikLight');//海康SDKnode封装
 var xml2Json = require('xml2json');
 var getHikVisionErrorCode = require('./hikVisionErrCode.js');
 var configData = require('./hikVisionTestData.js');
@@ -14,20 +14,11 @@ var kmlc2hikvision = require('./kmlc2hikvision.js');
 
 function hikVisionSdk_protocol(_options){
     var self = this;
-
     var deviceList=[];
-    
     //console.log(configData);
-
-
     self.fsm={};
-
-
-    //this.hklsdk = hklsdkenv;
-
-    self.fsm={};
+    this.hklsdk = hklsdkenv;
     setTimeout(function() {
-        self.emit('open', option);
     }, 0);
     
     setTimeout(function() {
@@ -43,15 +34,6 @@ function hikVisionSdk_protocol(_options){
     this.on('newListener', function(listener) {
         console.log('Event Listener: ' + listener);
     });
-
-    this.on('open', function(listener) {
-        console.log('Event open: ' + listener);
-    });
-
-    this.on('close', function() {
-        console.log('Event close: ');
-    });
-
   
     this.on('parsePhaseSettingResult',function(param,resXml){
         this.parsePhaseSettingResult(param,resXml);
@@ -75,6 +57,12 @@ function hikVisionSdk_protocol(_options){
         this.parseScheduleSettingResult(param,resXml);
     });
 
+    this.on('getPhaseInfos',function(param){
+        this.getPhaseInfos(param);
+    });
+
+
+    self.start();
     /*
     var lc2hik = new kmlc2hikvision(configData,function(res){
         //console.log(res);
@@ -85,6 +73,18 @@ function hikVisionSdk_protocol(_options){
 //<?xml version="1.0"?><xmlRoot><Parameter><End><Flag>0</Flag></End></Parameter></xmlRoot>
 }
 
+hikVisionSdk_protocol.prototype.getPhaseInfos = function(param){
+    var _this = this;
+    var input='<?xml version="1.0"?><xmlRoot><Status Operate="Get"><Channel></Channel></Status></xmlRoot>';
+    console.log(input);
+    _this.hklsdk.HikAscMsgTrans(param.lAscId,input,function(res,xmlOut){
+        console.log('res=',res,xmlOut);
+    });
+}
+
+
+
+
 hikVisionSdk_protocol.prototype.start  = function(){
     var _this = this;
     _this.initSdkEnvironment(function(err){
@@ -92,20 +92,24 @@ hikVisionSdk_protocol.prototype.start  = function(){
             console.log(err);
         }
     });
-    this.devicesSource = new devicesSource({
+    _this.devicesSource = new devicesSource({
         host: config.mysql.host,
         user: config.mysql.user,
         pwd: config.mysql.pwd,
         database: config.mysql.database
     });
+    
     thenjs(function(cont){
-        this.devicesSource.getDeviceList(function(list){
+        _this.devicesSource.getDeviceList(function(list){
             _this.deviceList=list;
+            console.log(_this.deviceList);
             cont(null,null);
         });
     })
     .then(function(cont,result){
-
+        console.log('开始登录信号机');
+        _this.connectDevice();
+        cont(null,null);
     })
     .fin(function(cont,err,result){
 
@@ -115,11 +119,30 @@ hikVisionSdk_protocol.prototype.start  = function(){
 //初始化SDK环境，只初始化一次
 hikVisionSdk_protocol.prototype.initSdkEnvironment = function(callback){
     var _this = this;
-    var res;
-    //res = _this.hklsdk.HikAscInitalize('', 'ENV', 'NTCIP');
+    var res=0;
+    res = _this.hklsdk.HikAscInitalize('', 'ENV', 'NTCIP');
     console.log('initHikLinghtSDK ret=%d',res);
     callback(res);
     return res;
+}
+
+hikVisionSdk_protocol.prototype.connectDevice = function(){
+    var _this = this;
+    for(var i=0;i<_this.deviceList.length;i++){
+        var sip = _this.deviceList[i].Ip;
+        var port = _this.deviceList[i].Port;
+        console.log(sip,port);
+        var lAscId=_this.hklsdk.HikAscLogin(sip,port);
+        if(lAscId>0){
+            _this.deviceList[i].lAscId=lAscId;
+            console.log('登录信号机:',sip,'成功 lAscId=',lAscId);
+            console.log(_this.deviceList[i]);
+            _this.emit('getPhaseInfos',_this.deviceList[i]);
+        }
+        else{
+            console.log('登录信号机:',sip,'失败,',lAscId);
+        }
+    }
 }
 
 /**

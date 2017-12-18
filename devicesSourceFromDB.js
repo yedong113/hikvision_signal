@@ -32,8 +32,9 @@ getFromDatabase.prototype.getDeviceList = function(callback) {
             console.log(err);
             callback([]);
         } else {
-            //console.log("connect db success!");
+            console.log("connect db success!");//5326212777
             var sql = 'SELECT * from tb_device where TypeValue=211';
+            sql = 'SELECT * from tb_device where DeviceId=5326212777';
             _this.connectObj.query(sql, function(err, rows, fields) {
                 var devideList = [];
                 for (var iix = 0; iix < rows.length; iix++) {
@@ -42,7 +43,7 @@ getFromDatabase.prototype.getDeviceList = function(callback) {
                         var tmp = {};
                         tmp.Id = rows[iix].DeviceId;
                         tmp.Url = rows[iix].Url;
-                        tmp.Port = urlbody.port;
+                        tmp.Port = parseInt(urlbody.port);
                         tmp.Ip = urlbody.hostname;
                         tmp.DeviceType = rows[iix].TypeValue;
                         devideList.push(tmp);
