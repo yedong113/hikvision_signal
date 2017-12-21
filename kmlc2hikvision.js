@@ -13,7 +13,6 @@ function kmlc2hikvision(data,callback){
     _this.PeriodTimeTable = [];
     _this.ChannelTable = [];
     _this.PhaseTable = data.PhaseTable;
-    _this.ChannelTable = data.ChannelTable;
     _this.SchemeTable = data.SchemeTable;
     _this.PeriodTimeTable = data.PeriodTimeTable;
     _this.ScheduleTable = data.ScheduleTable;
@@ -41,7 +40,6 @@ function kmlc2hikvision(data,callback){
     _this.genHikVisionConfig(function(res){
         callback(res);
     });
-    //this.setCb('{"result": "success"}');
 }
 
 
@@ -93,7 +91,6 @@ kmlc2hikvision.prototype.genChannelWithConfig=function(StageData,PhaseBitmap){
             }
         }
     }
-    //console.log(channels);
     return channels;
 }
 
@@ -229,7 +226,7 @@ kmlc2hikvision.prototype.genHikVisionConfig = function(callback){
         splitTables.push({
             SplitNumber:1,
             PhaseNumber:phaseTables[i].Number,
-            Time:phaseTables[i].MinimumGreen,
+            Time:phaseTables[i].Maximum1+phaseTables[i].YellowChange+phaseTables[i].RedClear,
             Mode:0,
             CoordPhase:0
         });
@@ -305,77 +302,41 @@ kmlc2hikvision.prototype.genHikVisionConfig = function(callback){
     var res={};
     res.DeviceId = _this.DeviceId;//DeviceId
     //res.phaseInfos=_this.genPhaseXml(phaseTables);
+
+    //只配置相位、相序、绿信比、通道、方案、动作、时段、调度和写flash
+    res.startInfos = _this.genStartXml(0b10000011111001110);
     res.endInfos = _this.genEndXml();
 
     res.phaseInfos={
-        begin:_this.genStartXml(0b100),//
-        data:_this.genPhaseXml(phaseTables),
-        end:res.endInfos
+        data:_this.genPhaseXml(phaseTables)
     };
     res.sequenceInfos ={
-        begin:_this.genStartXml(0b1000),//
-        data:_this.genSequenceXml(sequence),
-        end:res.endInfos
+        data:_this.genSequenceXml(sequence)
     };
     res.channelInfos = {
-        begin:_this.genStartXml(0b10000000),//
-        data:_this.genChannelXml(channelTable),
-        end:res.endInfos
+        data:_this.genChannelXml(channelTable)
     };
     res.patternInfos = {
-        begin:_this.genStartXml(0b100000000),//
-        data:_this.genPatternXml(patternTables),
-        end:res.endInfos
+        data:_this.genPatternXml(patternTables)
     };
 
     res.actionInfos = {
-        begin:_this.genStartXml(0b1000000000),//
-        data:_this.genActionXml(actionTables),
-        end:res.endInfos
-    }
+        data:_this.genActionXml(actionTables)
+    };
 
     res.dayPlayInfos = {
-        begin:_this.genStartXml(0b10000000000),//
-        data:_this.genDayplayXml(dayPlanTables),
-        end:res.endInfos
-    }
+        data:_this.genDayplayXml(dayPlanTables)
+    };
 
     res.scheduleInfos = {
-        begin:_this.genStartXml(0b100000000000),//
-        data:_this.genScheduleXml(scheduleTables),
+        data:_this.genScheduleXml(scheduleTables)
+    };
+    res.splitInfos = {
+        begin:_this.genStartXml(0b10000),//
+        data:_this.genSplitXml(splitTables),
         end:res.endInfos
     };
-    //res.overLapInfos = _this.genOverLapXml(overLapTables);
-    //res.splitInfos = _this.genSplitXml(splitTables);
-    //res.startInfos = _this.genStartXml(flag);
-
-    //console.log(res);
     callback(res);
-/*    console.log('phaseTables',phaseTables);
-    console.log('-------------------------------');
-    console.log('sequence',sequence);
-    console.log('-------------------------------');
-    console.log('overLapTables',overLapTables);
-    console.log('-------------------------------');
-    console.log('channelTable',channelTable);
-    console.log('-------------------------------');
-    console.log('splitTables',splitTables);
-    console.log('-------------------------------');
-    console.log('patternTables',patternTables);
-    console.log('-------------------------------');
-    console.log('actionTables',actionTables);
-    console.log('-------------------------------');
-    console.log('dayPlanTables',dayPlanTables);
-    console.log('-------------------------------');
-    console.log('scheduleTables',scheduleTables);
-
-*/
-/*
-    console.log(phaseTables);
-    console.log(channelTable);
-    console.log(splitTables);
-    console.log(patternTables);*/
-    //console.log(actionTables);
 }
 
 /**
@@ -432,21 +393,6 @@ kmlc2hikvision.prototype.getScheduleInfos=function(ScheduleTables) {
             DayPlan: SchemeTabelId
         };
         scheduleInfos.push(resScheduleInfo);
-        /*
-        var specialDayTables = scheduleInfo.SpecialDayTable;
-        var sdtLen = specialDayTables.length;
-        for (var k = 0; k < sdtLen; k++) {
-            var specialDayTable = specialDayTables[k];
-            var resScheduleInfo = {
-                Number: subScheduleNumber++,
-                Month: specialDayTable.Month,
-                Day: 0,
-                Date: specialDayTable.Day,
-                DayPlan: specialDayTable.PeriodTableId
-            };
-            scheduleInfos.push(resScheduleInfo)
-        }*/
-
     }
     return scheduleInfos;
 }
@@ -577,7 +523,6 @@ kmlc2hikvision.prototype.genSplitXml=function(splitTables){
     xw.startElement('Split1');
     for(var i=0;i<splitTables.length;i++){
         var splitInfo = splitTables[i];
-        //console.log(splitInfo);
         xw.startElement('Phase'+splitInfo.PhaseNumber);
         xw.writeElement("SplitNumber", splitInfo.SplitNumber);
         xw.writeElement("PhaseNumber", splitInfo.PhaseNumber);
@@ -656,7 +601,6 @@ kmlc2hikvision.prototype.genDayplayXml = function(dayPlanTables){
     xw.startElement('DayPlan1');
     for(var i=0;i<dayPlanTables.length;i++){
         var dayplaninfo = dayPlanTables[i];
-        //console.log(dayplaninfo);
         xw.startElement('Plan'+(i+1));
         xw.writeElement("DayPlanNumber", dayplaninfo.DayPlanNumber);
         xw.writeElement("PlanNumber", dayplaninfo.PlanNumber);
@@ -679,7 +623,6 @@ kmlc2hikvision.prototype.genScheduleXml = function(scheduleTables){
     xw.startElement('xmlRoot')
         .startElement('Parameter')
         .writeAttribute('Operate', 'Set');
-
     xw.startElement('Schedule');
     for(var i=0;i<scheduleTables.length;i++){
         var scheduleinfo = scheduleTables[i];
@@ -698,8 +641,6 @@ kmlc2hikvision.prototype.genScheduleXml = function(scheduleTables){
 }
 
 kmlc2hikvision.prototype.genStartXml = function(flag){
-//    var flag=0b111110011100;
-    //var flag=0b100;
     var xw = new XMLWriter;
     xw.startDocument('1.0');
     xw.startElement('xmlRoot')

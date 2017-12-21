@@ -1,5 +1,5 @@
 configData={
-    Id:'5326212709',
+    Id:'5326212777',
     ChannelTable:[
         {
 		ChannelDescribe: '南方向人行',

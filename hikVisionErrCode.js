@@ -62,5 +62,115 @@ function getHikVisionErrorCode(code,callback){
 }
 
 
+function getSetMsgTransCode(code){
+    var codeMsg='';
+    switch(code){
+        case 0:{
+            codeMsg='';
+        }
+        break;
+        case -1:{
+            codeMsg='编码失败';
+        }
+        break;
+        case -2:{
+            codeMsg='解码失败';
+        }
+        break;
+        case -3:{
+            codeMsg='发送消息失败';
+        }
+        break;
+        case -4:{
+            codeMsg='信号机未注册';
+        }
+        break;
+        case -5:{
+            codeMsg='参数为空';
+        }
+        break;
+        case -6:{
+            codeMsg='信号机已断开';
+        }
+        break;
+        case -7:{
+            codeMsg='信号机已注销';
+        }
+        break;
+        case -8:{
+            codeMsg='信号机通讯异常';
+        }
+        break;
+        case -9:{
+            codeMsg='初始化同步锁失败';
+        }
+        break;
+        case -10:{
+            codeMsg='信号机ID为0';
+        }
+        break;
+        case -11:{
+            codeMsg='语言版本不支持';
+        }
+        break;
+        case -101:{
+            codeMsg='编码参数错误';
+        }
+        break;
+        case -102:{
+            codeMsg='编码消息格式错误';
+        }
+        break;
+        case -103:{
+            codeMsg='未知的消息类型';
+        }
+        break;
+        case -104:{
+            codeMsg='编码块数据未定义';
+        }
+        break;
+        case -105:{
+            codeMsg='编码块数据错误';
+        }
+        break;
+        case -106:{
+            codeMsg='编码消息过长';
+        }
+        break;
+        case -201:{
+            codeMsg='解码消息格式错误';
+        }
+        break;
+        case -202:{
+            codeMsg='解码消息长度错误';
+        }
+        break;
+        case -203:{
+            codeMsg='解码参数错误';
+        }
+        break;
+        case -204:{
+            codeMsg='解码HIK消息头错误';
+        }
+        break;
+        case -205:{
+            codeMsg='解码生成的XML长度过长';
+        }
+        break;
+        case -206:{
+            codeMsg='解码扩展协议消息头错误';
+        }
+        break;
+        case -207:{
+            codeMsg='解码扩展协议校验错误';
+        }
+        break;
+    }
+    return codeMsg;
+}
+
+err={errCode:1,errorString:'设备不在线'}
+
 module.exports = getHikVisionErrorCode;
+module.exports = getSetMsgTransCode;
 

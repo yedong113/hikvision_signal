@@ -104,8 +104,6 @@ hikvision_proto.prototype.configParameter = function(data, callback) {
         });
         return;
     }
-    
-
 };
 
 

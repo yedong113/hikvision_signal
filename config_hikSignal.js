@@ -1,5 +1,5 @@
 var config = {
-	port: 2555,
+	port: 1555,
 	mysql:{
 		host:'53.28.100.34',
 		port:3306,
@@ -8,11 +8,12 @@ var config = {
 		database:'trafficcenter'
 	},
 	reportPara:{
-		kafkaHost:'Node3:9092',
+		kafkaHost:'ZK01:19092',
 		topic:"ITSCRealData"
 	},
 	UDPListenPort:10000,
-	localhost:'53.28.100.107'
+	localhost:'53.28.100.107',
+
 }
 
 
