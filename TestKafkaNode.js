@@ -5,24 +5,21 @@ var client = new Client('ZK01:19092');
 var topic = 'ITSCRealData';
 var count = 10;
 var rets = 0;
-var producer = new HighLevelProducer(client);
+var thenjs = require('thenjs');
 
-producer.on('ready', function () {
-    console.log('111111111111111');
-    setInterval(send, 1000);
-});
-
-producer.on('error', function (err) {
-    console.log('error', err);
-});
-
-function send () {
-    var message = new Date().toString();
-    producer.send([
-        {topic: topic, messages: [message]}
-    ], function (err, data) {
-        if (err) console.log(err);
-        else console.log('send %d messages', ++rets);
-        if (rets === count) process.exit();
+thenjs(function(cont){
+        console.log("then 1");
+        cont(null,'result');
+    })
+    .then(function(cont,result){
+        console.log('then 2',result);
+        cont(null,'err','result');
+    })
+    .then(function(cont,err,result){
+        console.log('then 3',err,result);
+        cont(null,null);
+    })
+    .fin(function(cont,err,result){
+        console.log('then 4');
     });
-}
+

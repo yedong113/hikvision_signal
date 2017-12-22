@@ -249,6 +249,17 @@ hikLightProtocolServer.prototype.queryStatus = function(deviceId,lAscId){
 }
 
 
+hikLightProtocolServer.prototype.reReadDeviceList = function () {
+    var _this = this;
+    console.log('重新提取数据库中的设备信息');
+    _this.devicesSource.getDeviceList(function(err,list){
+        if(err==0){
+            _this.deviceList=list;
+        }
+    });
+}
+
+
 hikLightProtocolServer.prototype.start  = function(){
     var _this = this;
     _this.initSdkEnvironment(function(err){
@@ -264,9 +275,13 @@ hikLightProtocolServer.prototype.start  = function(){
     });
     
     thenjs(function(cont){
-        _this.devicesSource.getDeviceList(function(list){
-            _this.deviceList=list;
-            console.log(_this.deviceList);
+        _this.devicesSource.getDeviceList(function(err,list){
+            if(err==0){
+                _this.deviceList=list;
+            }
+            else
+            {
+            }
             cont(null,null);
         });
     })
@@ -279,7 +294,15 @@ hikLightProtocolServer.prototype.start  = function(){
 
     });
 
-    _this.kafkaReportStatus = new kafkaStatusReport();
+    //每隔20秒检查一下设备的连接状态
+    setInterval(function() {
+        _this.connectDevice();
+    }, 20000);
+
+    //每隔5分钟重新提取一下数据库中的设备信息
+    setInterval(function() {
+        _this.reReadDeviceList();
+    }, 5*60*1000);
 }
 
 //初始化SDK环境，只初始化一次
@@ -292,29 +315,24 @@ hikLightProtocolServer.prototype.initSdkEnvironment = function(callback){
     return res;
 }
 
+
+
+
 hikLightProtocolServer.prototype.connectDevice = function(){
     var _this = this;
     for(var i=0;i<_this.deviceList.length;i++){
         var sip = _this.deviceList[i].Ip;
         var port = _this.deviceList[i].Port;
-        console.log(sip,port);
-        var lAscId=_this.hklsdk.HikAscLogin(sip,port);
-        if(lAscId>0){
-            _this.deviceList[i].lAscId=lAscId;
-            console.log('登录信号机:',sip,'成功 lAscId=',lAscId);
-            console.log(_this.deviceList[i]);
-            /*
-            var lc2hik = new kmlc2hikvision(configData,function(res){
-                _this.configParameter(res,function(result){
-                    console.log(result);
-                });
-            });
-            */
-            //_this.emit('getPhaseInfos',_this.deviceList[i]);
-            //_this.emit('queryStatus', _this.deviceList[i].Id,_this.deviceList[i].lAscId);
-        }
-        else{
-            console.log('登录信号机:',sip,'失败,',lAscId);
+        if (_this.deviceList[i].lAscId==0){
+            var lAscId=_this.hklsdk.HikAscLogin(sip,port);
+            if(lAscId>0){
+                _this.deviceList[i].lAscId=lAscId;
+                console.log('登录信号机:',sip,'成功 lAscId=',lAscId);
+                console.log(_this.deviceList[i]);
+            }
+            else{
+                console.log('登录信号机:',sip,'失败,',lAscId);
+            }
         }
     }
 }
@@ -351,19 +369,92 @@ hikLightProtocolServer.prototype.settingPatameter = function(lAscId,input,callba
     });
 }
 
-
 hikLightProtocolServer.prototype.add_task_paramer = function (param,callback) {
     var _this = this;
-
+    _this.configParameter(param,function (res) {
+        callback(res);
+    })
 }
 
+hikLightProtocolServer.prototype.add_task_contrl = function(param,callback){
+    var _this=this;
+    _this.fsm.callback=callback;
+    var flag=0;
+    console.log(param);
+    param.lAscId=0;
+    for(var i=0;i<_this.deviceList.length;i++){
+        if(param.DeviceId==_this.deviceList[i].Id){
+            param.lAscId=_this.deviceList[i].lAscId;
+            flag++;
+            break;
+        }
+    }
+    if(param.lAscId==0){
+        callback({errCode:1,msg:'设备不在线'});
+        return;
+    }
+    else {
+        _this.getDeviceConnStatus(param.lAscId,function (resCode) {
+            if(resCode!=0){
+                callback({errCode:1,msg:'设备不在线'});
+                return;
+            }
+        });
+    }
 
-hikLightProtocolServer.prototype.getDeviceConnStatus = function (lAScId) {
+    if(flag==0){
+        callback({errCode:1,msg:'设备不存在'});
+        return;
+    }
+    var WorkModule = param.WorkModule;
+    var ModulePara = param.ModulePara;
+    var input='';
+    switch (WorkModule){
+        case 5:{//全红
+            input = config.hikControlMode.fullRedMode;
+            break;
+        }
+        case 6:{//黄闪
+            input = config.hikControlMode.flashYellowMode;
+            break;
+        }
+        case 7:{//关灯
+            input = config.hikControlMode.closeLightMode;
+            break;
+        }
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        default:{
+            input = config.hikControlMode.systemMode;
+            break;
+        }
+    }
+    _this.settingPatameter(param.lAscId,input,function (resCode,outXml) {
+        callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
+    });
+}
+
+/**
+ * 获取信号机的联机状态 结果res中，只有0才是正常的
+ * @param lAScId
+ * @param callback
+ */
+hikLightProtocolServer.prototype.getDeviceConnStatus = function (lAScId,callback) {
     var _this = this;
-
+    var input='<?xml version="1.0"?><xmlRoot><Status Operate="Get"><Channel></Channel></Status></xmlRoot>';
+    _this.settingPatameter(lAScId,input,function (res,outXml) {
+        callback(res);
+    });
 }
 
 
+/**
+ * 开始配置海康信号机
+ * @param param
+ * @param callback
+ */
 hikLightProtocolServer.prototype.configParameter = function(param,callback){
     var _this=this;
     _this.fsm.callback=callback;
@@ -376,8 +467,20 @@ hikLightProtocolServer.prototype.configParameter = function(param,callback){
             break;
         }
     }
+    if(param.lAscId==0){
+        callback({errCode:1,msg:'设备不在线'});
+        return;
+    }
+    else {
+        _this.getDeviceConnStatus(param.lAscId,function (resCode) {
+           if(resCode!=0){
+               callback({errCode:1,msg:'设备不在线'});
+               return;
+           }
+        });
+    }
     if(flag==0){
-        callback({errCode:1,errorString:'设备不在线'});
+        callback({errCode:1,errorString:'设备不存在'});
         return;
     }
     console.log('开始配置海康信号机参数',param);
@@ -388,29 +491,41 @@ hikLightProtocolServer.prototype.configParameter = function(param,callback){
     });
 }
 
-
+/**
+ * 解析开始配置指定返回的结果，结果正常的话开始配置相位
+ * @param param
+ * @param resCode
+ * @param outXml
+ */
 hikLightProtocolServer.prototype.parseStartSettingResult = function(param,resCode,outXml){
     var _this = this;
     
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置相位',param.phaseInfos);
     _this.settingPatameter(param.lAscId,param.phaseInfos,function(resCode,xmlOut){
-        //_this.emit('parseSequenceSettingResult',param,resCode,xmlOut);
+        //注意这里一定要先调用一下获取原相位的配置，否则在配置相序会报-104错误,血和泪的教训
         _this.getParameter(param,'<?xml version="1.0"?><xmlRoot><Parameter Operate="Get"><Phase></Phase></Parameter></xmlRoot>');
-        //_this.settingPatameter(param.lAscId,param.sequenceInfos,function(resCode,xmlOut){
-            _this.emit('parseSequenceSettingResult',param,resCode,xmlOut);
-        //});
+        _this.emit('parseSequenceSettingResult',param,resCode,xmlOut);
     });
 }
 
 
+/**
+ * 解析配置相位表的结果，如果结果正常的话配置相序表
+ * 注意海康的信号机配置参数调用其自身的SDK，只支持同步调用，
+ * 一般配置参数有两个结果，一个是SDK函数的返回结果，如果返回非0，无需查看返回的outXml，
+ * 如果返回0，要判定outXml的结果，一般只是在调用end的时候才需要判定outXml
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parsePhaseSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置相序',param.sequenceInfos);
@@ -419,13 +534,16 @@ hikLightProtocolServer.prototype.parsePhaseSettingResult = function(param,resCod
     });
 }
 
-
-
-
+/**
+ * 解析配置相序表的结果，如果resCode正常的话配置通道表
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseSequenceSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置通道',param.channelInfos);
@@ -434,10 +552,17 @@ hikLightProtocolServer.prototype.parseSequenceSettingResult = function(param,res
     });
 }
 
+
+/**
+ * 解析配置通道表的结果，如果resCode正常的话配置绿信比表
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseChannelSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置绿信比',param.splitInfos);
@@ -447,11 +572,16 @@ hikLightProtocolServer.prototype.parseChannelSettingResult = function(param,resC
 }
 
 
-
+/**
+ * 解析配置绿信比表的结果，如果resCode正常的话配置方案
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseSplitSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置方案',param.patternInfos);
@@ -460,10 +590,17 @@ hikLightProtocolServer.prototype.parseSplitSettingResult = function(param,resCod
     });
 }
 
+
+/**
+ * 解析配置方案表的结果，如果resCode正常的话配置动作表
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parsePatternSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置动作表',param.actionInfos);
@@ -473,10 +610,16 @@ hikLightProtocolServer.prototype.parsePatternSettingResult = function(param,resC
 }
 
 
+/**
+ * 解析配置动作表结果，如果resCode正常的话，配置时段表
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseActionSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置时段表',param.dayPlayInfos);
@@ -485,10 +628,16 @@ hikLightProtocolServer.prototype.parseActionSettingResult = function(param,resCo
     });
 }
 
+/**
+ * 解析配置时段表的结果，如果resCode正常的话，配置调度计划
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseDayplanSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     console.log('配置调度计划表',param.scheduleInfos);
@@ -497,10 +646,16 @@ hikLightProtocolServer.prototype.parseDayplanSettingResult = function(param,resC
     });
 }
 
+/**
+ * 解析配置调度计划表结果，如果resCode正常，调用结束指令完成配置
+ * @param param
+ * @param resCode
+ * @param xmlRes
+ */
 hikLightProtocolServer.prototype.parseScheduleSettingResult = function(param,resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     _this.endSettingParameter(param.lAscId,param.endInfos,function(resCode,xmlRes){
@@ -512,32 +667,24 @@ hikLightProtocolServer.prototype.parseScheduleSettingResult = function(param,res
 hikLightProtocolServer.prototype.parseEndSettingResult = function(resCode,xmlRes){
     var _this = this;
     if(resCode!=0){
-        _this.fsm.callback({errCode:resCode,errorString:getSetMsgTransCode(resCode)});
+        _this.fsm.callback({errCode:resCode,msg:getSetMsgTransCode(resCode)});
         return;
     }
     var resJson = xml2Json.toJson(xmlRes);
-    
     var jsonObj = JSON.parse(resJson);
     var code = jsonObj.xmlRoot.Parameter.End.Flag;
     if(code!=0){
         getHikVisionErrorCode(code,function(msg){
-            _this.fsm.callback(msg);
+            _this.fsm.callback({errCode:code,msg:msg});
         });
     }
     else{
-        _this.fsm.callback('配置参数成功');
+        _this.fsm.callback({errCode:code,msg:'配置参数成功'});
     }
 }
 
 util.inherits(hikLightProtocolServer, EventEmitter);
 
-
-var option={
-    freq: '80.16',
-    name: 'Rock N Roll Radio',
-};
-
 //var aaa = new hikLightProtocolServer (option);
-
 
 module.exports = hikLightProtocolServer;
